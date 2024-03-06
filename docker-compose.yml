@@ -1,0 +1,9 @@
+version: '3.8' # Use a suitable version for your needs
+services:
+  omnitool:
+    image: manusapiens/omnitool_metal_pi:latest
+    ports:
+      - "1688:4444"
+    volumes:
+      - "./omnitool.data:/app/omnitool/packages/omni-server/data.local"
+    restart: unless-stopped

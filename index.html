@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docker Manager</title>
+    <style>
+        #terminal {
+            background-color: black;
+            color: lime;
+            font-family: monospace;
+            padding: 5px;
+            height: 300px;
+            overflow-y: scroll;
+            white-space: pre-wrap; /* Or 'pre' if you want no line wraps */
+        }
+        body {
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        #devToolsButton {
+            padding: 10px;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Docker Manager</h1>
+    <button id="startContainer" disabled>Start Container</button>
+    <button id="openWindowButton">Open Web Interface</button>
+    <button id="devToolsButton">Open Dev Tools</button>
+
+    <div id="terminal"></div>
+    <script src="renderer.js"></script>
+</body>
+</html>
