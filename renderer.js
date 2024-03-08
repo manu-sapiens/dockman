@@ -9,11 +9,18 @@ document.addEventListener('DOMContentLoaded', () => {
       if (error) {
         console.error('Docker is not installed:', error);
         startContainerBtn.disabled = true;
+
+
       } else {
         console.log('Docker version:', stdout);
         startContainerBtn.disabled = false;
       }
     });
+  }
+
+  function appendToTerminal(t, text) {
+    t.textContent += text;
+    t.scrollTop = terminal.scrollHeight; // Scroll to the bottom
   }
 
   document.getElementById('openWindowButton').addEventListener('click', () => {
@@ -37,9 +44,17 @@ document.addEventListener('DOMContentLoaded', () => {
     appendToTerminal(terminal, data);
   });
 
-  function appendToTerminal(t, text) {
-    t.textContent += text;
-    t.scrollTop = terminal.scrollHeight; // Scroll to the bottom
-  }
+  startContainerBtn.addEventListener('click', () => {
+    document.getElementById('loadingIndicator').style.display = 'block'; // Show loading indicator
+    window.electronAPI.startContainer();
+  });
+
+  window.electronAPI.receive('container-exited', (code) => {
+    document.getElementById('loadingIndicator').style.display = 'none'; // Hide loading indicator
+    appendToTerminal(`Container exited with code ${code}`);
+  });
+
+
+  
 
 });

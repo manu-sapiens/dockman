@@ -20,18 +20,16 @@
         mainWindow.loadFile('index.html');
 
         // Listen for the toggle-dev-tools message
-        ipcMain.on('toggle-dev-tools', () => {
-        console.log("TOGGLE DEV TOOL");
+        ipcMain.on('toggle-dev-tools', () => 
+        {
+            console.log("TOGGLE DEV TOOL");
             mainWindow.webContents.openDevTools();
         });
 
-        ipcMain.on('docker-output', (event, data) => {
+        ipcMain.on('docker-output', (event, data) => 
+        {
             mainWindow.webContents.send('docker-output', data);
         });
-
-        console.log("OPENING WEB TOOLS");
-        mainWindow.webContents.openDevTools();
-
 
         ipcMain.on('open-new-window', (event, url) => {
             const modal = new BrowserWindow({
@@ -49,6 +47,8 @@
             modal.loadURL(url);
         });
 
+        // !!!!!! DEBUG
+        mainWindow.webContents.openDevTools();
     }
 
     // This method will be called when Electron has finished
@@ -61,9 +61,11 @@
     // for applications and their menu bar to stay active until the user quits
     // explicitly with Cmd + Q.
     app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-    app.quit();
-    }
+        app.quit();
+
+    //if (process.platform !== 'darwin') {
+    //app.quit();
+    //}
     });
 
     app.on('activate', () => {
