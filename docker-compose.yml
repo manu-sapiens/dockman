@@ -7,4 +7,3 @@ services:
     volumes:
       - "./omnitool.data/file-import:/app/omnitool/packages/omni-server/data.local/file-import"
       - "./omnitool.data/file-export:/app/omnitool/packages/omni-server/data.local/file-export"
-    restart: unless-stopped

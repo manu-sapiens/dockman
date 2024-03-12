@@ -1,23 +1,33 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 
-function createWindow() 
+function createMainWindow() 
 {
     // Create the browser window.
     const mainWindow = new BrowserWindow(
         {
             width: 800,
-            height: 600,
+            height: 800,
             webPreferences: {
-                preload: path.join(__dirname, 'preload.js'),
                 contextIsolation: true,
                 nodeIntegration: true, // it's recommended to keep nodeIntegration off for security
                 enableRemoteModule: true, // it's recommended to keep enableRemoteModule off for security
+                preload: path.join(__dirname, 'preload.js') // Use a preload script
             }
         });
 
     // and load the index.html of the app.
     mainWindow.loadFile('index.html');
+
+    // Listen for messages from the renderer
+    /*
+    ipcMain.on('startDockerInstall', (event, args) => {
+        // Logic to start Docker installation
+
+        // Periodically send status updates back to the renderer
+        mainWindow.webContents.send('docker-status-update', 'Docker installation started');
+    });
+    */
 
     // Listen for the toggle-dev-tools message
     ipcMain.on('toggle-dev-tools', () => 
@@ -31,6 +41,16 @@ function createWindow()
         mainWindow.webContents.send('docker-output', data);
     });
 
+    ipcMain.on('docker-status-update', (event, data) => 
+    {
+        mainWindow.webContents.send('docker-status-update', data);
+    });
+
+    ipcMain.on('container-status-update', (event, data) => 
+    {
+        mainWindow.webContents.send('container-status-update', data);
+    });
+
     ipcMain.on('open-product-window', (event, url) =>
     {
         const modal = new BrowserWindow({
@@ -40,7 +60,7 @@ function createWindow()
                 nodeIntegration: false, // It's a good practice to turn off node integration for web content
                 contextIsolation: true, // Protect against prototype pollution
                 enableRemoteModule: true, // Turn off remote
-                preload: path.join(__dirname, 'preload.js') // Use a preload script
+                //preload: path.join(__dirname, 'preload.js') // Use a preload script
 
             }
         });
@@ -51,7 +71,7 @@ function createWindow()
     ipcMain.on('open-new-window', (event, url) =>
     {
         const modal = new BrowserWindow({
-            width: 800,
+            width: 600,
             height: 600,
             parent: mainWindow,
             webPreferences: {
@@ -70,7 +90,7 @@ function createWindow()
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(createWindow);
+app.whenReady().then(createMainWindow);
 
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -91,7 +111,7 @@ app.on('activate', () =>
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0)
     {
-        createWindow();
+        createMainWindow();
     }
 });
 
