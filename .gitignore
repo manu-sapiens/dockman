@@ -7,6 +7,7 @@ dist-ssr
 */etc/keystore/*
 */etc/registry/.cache/*
 omni.zip
+omnitool.data/*
 
 tsconfig.tsbuildinfo
 /**/*/public/t

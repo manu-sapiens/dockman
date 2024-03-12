@@ -1,3 +1,5 @@
+const productWindowUrl = 'http://127.0.0.1:1688';
+
 document.addEventListener('DOMContentLoaded', () => {
   const terminal = document.getElementById('terminal');
   const startContainerBtn = document.getElementById('startContainer');
@@ -23,8 +25,8 @@ document.addEventListener('DOMContentLoaded', () => {
     t.scrollTop = terminal.scrollHeight; // Scroll to the bottom
   }
 
-  document.getElementById('openWindowButton').addEventListener('click', () => {
-    window.electronAPI.openNewWindow('http://127.0.0.1:1688');});
+  document.getElementById('openProductButton').addEventListener('click', () => {
+    window.electronAPI.openProductWindow(productWindowUrl);});
 
   // Call the checkDocker function on load
   checkDocker();
