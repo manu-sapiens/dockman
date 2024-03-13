@@ -3,12 +3,15 @@ const { exec, spawn } = require('child_process');
 const yaml = require('js-yaml');
 const fs = require('fs');
 const { start } = require('repl');
+const axios = require('axios');
+const { resolve } = require('path');
 
 
 
 const containerReadyString = "Server has started and is ready to accept connections on";
 const containerExistsString = "Attaching to ";
 const urlToLaunchWhenReady = "http://127.0.0.1:1688";
+const healthCheckUrl = "http://127.0.0.1:1688/api/v1/mercenaries/ping";
 const imageName = "manusapiens/omnitool_metal_pi:latest";//dockerComposeConfig.omnitool.manusapiens.omnitool_metal_pi;
 const dockerRunOptions = 
 [
@@ -20,6 +23,11 @@ const dockerRunOptions =
 const urlToDownloadDockerDesktop = "https://www.docker.com/products/docker-desktop/";
 //const dockerComposeYaml = fs.readFileSync('./docker-compose.yml', 'utf8');
 //const dockerComposeConfig = yaml.load(dockerComposeYaml);
+
+let ping_startTime = 0;
+let ping_interval = 0;
+let ping_timeout = 0;
+let ping_url = "";
 
 
 
@@ -223,11 +231,7 @@ async function async_updateImageAndStartContainer(imageName)
         // Handle the error appropriately
     }
 }
-
-// Example usage
-//updateImageAndStartContainer("manusapiens/omnitool_metal_pi:latest").catch(console.error);
 // ----------------------------------
-
 async function async_startDockerMacOs()
 {
     console.log("MacOs detected. Trying to start Docker...");
@@ -285,36 +289,6 @@ async function async_startDocker()
 }
 
 
-async function async_getRunningContainerIdByImage(imageName) {
-    return new Promise((resolve, reject) => 
-    {
-        const execString = `docker ps --filter "ancestor=${imageName}" --format json`;
-        console.log("execString:", execString);
-        exec(execString, (error, stdout, stderr) =>
-        {
-            
-            if (error) {
-                console.error(`Error fetching running container ID: ${error}`);
-                reject(error);
-            } else {
-                const jsonOutput = JSON.parse(stdout);
-                if (jsonOutput.length > 0) 
-                {
-                    const containerId = jsonOutput[0].ID;
-                    if (containerId) {
-                        console.log(`Found running container ID: ${containerId}`);
-                        resolve(containerId);
-                    }
-                }
-
-                console.log('No running containers found for the specified image.');
-                resolve(null); // Resolve with null if no container is found
-            }
-        });
-    });
-}
-
-
 async function async_checkIfImageIsRunning(imageName) 
 {
     console.log("Checking if image:", imageName, "is running...");
@@ -336,7 +310,6 @@ async function async_checkIfImageIsRunning(imageName)
             }
             else 
             {
-                console.log(`stdout: ${stdout}`);
                 if (stdout !== "")            
                 {
                     try
@@ -346,22 +319,310 @@ async function async_checkIfImageIsRunning(imageName)
                         const imageId = jsonOutput.ID;
                         if (imageId)
                         {
-                            console.log('Image is running:', imageName);
+                            console.log('Image is running:', imageName, " id = ", imageId);
                             resolve(imageId);
+                            return;
                         }
                     }
                     catch (error)
                     {
-                        console.error('Error parsing stdout:', error.message);
+                        console.error('Error parsing docker ps stdout:', error.message);
                     }
                 }
 
                 console.log('Image is not running:', imageName);
                 resolve(null);
+                return;
             }
         });
     });
 }
+
+
+let product_launched = false;
+// ----------------------------------
+
+async function async_startContainer()
+{
+    ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer STARTING: ⏳\nApplication ready: 😴`);
+
+    let args = ['run'];
+    args = args.concat(dockerRunOptions);
+    args.push(imageName);
+    console.log("Starting container with args:", args);
+
+    try
+    {
+        await async_spawnContainer(args);
+    }
+    catch
+    {
+        console.error("Failed to start container with args:", args);      
+    }
+}
+
+
+async function async_restartContainer(containerId)
+{
+    ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer RESTARTING: ⏳\nApplication ready: 😴`);
+
+    let args = ['restart', containerId];  
+    console.log("Restarting container with args:", args);
+    try
+    {
+        await async_spawnContainer(args);
+        await async_spawnContainer(['attach', containerId]);
+        
+    }
+    catch
+    {
+        console.error("Failed to restart container with args:", args);      
+    }
+}
+
+
+async function async_spawnContainer(spawn_args) 
+{
+    //ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ⏳\nApplication ready: 😴`);
+    return new Promise((resolve, reject) => 
+    {
+        console.log("START/RE-START CONTAINER with args: ",spawn_args);
+        //const composeProcess = spawn('docker-compose', ['up']);
+        const containerProcess = spawn('docker', spawn_args);
+        containerProcess.stdout.on('data', (data) => 
+        {
+            console.log("CONTAINER: ", data.toString());
+            ipcRenderer.send('docker-output', data.toString());
+
+            // check if the data contains the containerReadyString and if so, open the window to urlToLaunchWhenReady
+            if (data.toString().includes(containerReadyString)) 
+            {
+                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ☑️\nApplication ready: ☑️`);
+                ipcRenderer.send('open-product-window', urlToLaunchWhenReady);
+            }
+
+            /*
+            if (data.toString().includes(containerExistsString)) {
+                console.log("!!!!!! (from error) Container exists");
+                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ☑️\nApplication ready: ⏳`);
+            
+                if (!product_launched)
+                {
+                    ipcRenderer.send('open-product-window', urlToLaunchWhenReady);
+                    product_launched = true;
+                }
+            }
+            */
+
+        });
+
+        containerProcess.stderr.on('data', (data) => 
+        {
+            console.error("ERROR: ", data.toString());
+            ipcRenderer.send('docker-output', data.toString());
+
+        });
+
+        containerProcess.on('close', (code) => 
+        {
+            console.log("CLOSE: ", code);
+            ipcRenderer.send('docker-output', `Docker-compose exited with code ${code}`); 
+            if (code === 0) 
+            { 
+                ipcRenderer.send('container-exited', code); // Optionally send the exit code to the renderer 
+                resolve(code); // Resolve the promise successfully with the exit code 
+            } 
+            else
+            {
+                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ⚠️`);
+                reject(new Error(`Docker-compose exited with code ${code}`)); 
+                // Reject the promise with an error
+            }
+        });
+    });
+}
+ 
+async function async_ping(url)
+{
+    console.log('[ping]...');
+
+    try 
+    {
+        const response = await axios.get(url);
+        if (response.status === 200) {
+            console.log('[ping] Service is healthy');
+            console.log('[PING] Service is up and running. Opening product window.');
+            ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ☑️\nApplication ready: ☑️`);
+            ipcRenderer.send('open-product-window', urlToLaunchWhenReady);    
+            return true;
+        } 
+        else 
+        {
+            console.warn('[ping] Service responded, but not with a 200 status: ', response.status);
+            return false;
+        }
+    } 
+    catch (error) 
+    {
+        console.warn('[ping] Error pinging service or no response:', error.message);
+        return false;
+    }
+}
+
+
+async function async_recurringPing()
+{
+    console.log("Date.now(), startTime, timeout, url: ", Date.now(), ping_startTime, ping_timeout, ping_url);
+
+    if (Date.now() - ping_startTime > ping_timeout) 
+    {
+        console.error('[PING] Timeout reached, service did not start.');
+        return false;
+    }
+
+    try 
+    {
+        const ping_successful = await async_ping(ping_url);
+        if (ping_successful) 
+        {
+            return true;
+        }
+        else 
+        {
+            console.error('[PING] Service is NOT up and running.');
+            setTimeout(async_recurringPing, ping_interval); // Try again after the interval
+        }
+    }
+    catch (error) 
+    {
+        console.error('[PING] Error pinging service or no response:', error.message);
+        setTimeout(async_recurringPing, ping_interval); // Try again after the interval
+    }
+}
+
+
+async function async_pingService(intervalSeconds, timeoutSeconds, url) 
+{
+    console.log("async_pingService...");
+    ping_url = url;
+    ping_startTime = Date.now();
+    ping_interval = intervalSeconds * 1000; // Convert seconds to milliseconds
+    ping_timeout = timeoutSeconds * 1000; // Convert seconds to milliseconds
+    const result = async_recurringPing();
+    return result;
+}
+
+
+
+async function async_composeContainer() 
+{
+    ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer CHECKING: ⏳\nApplication ready: 😴`);
+    return new Promise((resolve, reject) => 
+    {
+        console.log("DOCKER COMPOSE UP");
+        const composeProcess = spawn('docker-compose', ['up']);
+        composeProcess.stdout.on('data', (data) => 
+        {
+            console.log("CONTAINER: ", data.toString());
+            ipcRenderer.send('docker-output', data.toString());
+
+            /*
+            // check if the data contains the containerReadyString and if so, open the window to urlToLaunchWhenReady
+            if (data.toString().includes(containerReadyString)) 
+            {
+                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ☑️\nApplication ready: ☑️`);
+                ipcRenderer.send('open-product-window', urlToLaunchWhenReady);
+            }
+            */
+
+        });
+
+        composeProcess.stderr.on('data', (data) => 
+        {
+            console.error("ERROR: ", data.toString());
+            ipcRenderer.send('docker-output', data.toString());
+
+        });
+
+        composeProcess.on('close', (code) => 
+        {
+            console.log("CLOSE: ", code);
+            ipcRenderer.send('docker-output', `Docker-compose exited with code ${code}`); 
+            if (code === 0) 
+            { 
+                ipcRenderer.send('container-exited', code); // Optionally send the exit code to the renderer 
+                //resolve(code); // Resolve the promise successfully with the exit code 
+            } 
+            else
+            {
+                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ⚠️`);
+                reject(new Error(`Docker-compose exited with code ${code}`)); 
+                // Reject the promise with an error
+            }
+        });
+
+        resolve(true);
+    });
+}
+
+contextBridge.exposeInMainWorld('electronAPI', {
+
+    // Function for the renderer to send messages to the main process
+    send: (channel, data) => {
+        // Channels the renderer process can send messages to
+        let validSendChannels = ['startDockerInstall', 'docker-status-update','container-status-update'];
+        if (validSendChannels.includes(channel)) {
+            ipcRenderer.send(channel, data);
+        }
+    },
+
+    // Function to receive messages from the main process
+    receive: (channel, func) => {
+        console.log("RECEIVE, channel =", channel);
+        let validReceiveChannels = ['docker-status-update','container-status-update', 'docker-output', 'container-exited'];
+        if (validReceiveChannels.includes(channel)) {
+            // Deliberately strip event as it includes `sender` and is a security risk
+            ipcRenderer.on(channel, (event, ...args) => func(...args));
+        }
+        else
+        {
+            console.error("Using unknown chanel: ", channel);
+        }
+    },
+
+    async electron_checkDockerInstalled() 
+    {
+        
+        const docker_is_installed = await async_checkDockerInstalled();
+        if (docker_is_installed)
+        {
+            ipcRenderer.send('docker-status-update', `Docker installed: ☑️\nDocker running: 👀`);
+        }
+        else
+        {
+            ipcRenderer.send('docker-status-update', `Docker installed: ⚠️\nDocker running: ⚠️`);
+        }
+        return docker_is_installed;
+    },
+
+
+    electron_startContainer: () => {
+        console.log("--- startContainer request received ---");
+        async_startContainer();
+    },
+
+    electron_openProductWindow: (url) => {
+        ipcRenderer.send('open-product-window', url);
+    },
+
+    electron_toggleDevTools: () => {
+        ipcRenderer.send('toggle-dev-tools');
+    },
+});
+
+
+
+
 
 async function async_init() 
 {
@@ -446,199 +707,42 @@ async function async_init()
     }
 
 
-    // check if the image is already running
-    try
+    const inital_ping_successful = await async_ping(healthCheckUrl);
+    if (!inital_ping_successful)
     {
-        const containerId = await async_checkIfImageIsRunning(imageName);
-        if (containerId)
+        console.error("[INIT] Inital ping failed. Will Compose-Up the container now...");
+        ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ⏳\nApplication ready: 😴`);
+
+        try
         {
-            // restart and wait for it to be running
-            await async_restartContainer(containerId);
+            await async_composeContainer();
         }
-        else
+        catch (error)
         {
-            // start and wait for it to be running
-            try 
-            {
-                await async_startContainer(imageName);
-                console.log('Container started successfully.');
-                // Proceed with any operations after the container has started
-            } 
-            catch (error) 
-            {
-                console.error('Failed to start the container:', error.message);
-                throw new Error(`Failed to start the container: ${error.message}`);
-                // Handle the failure case
-            }            
+            console.error("Error starting container:", error.message);
+            // Handle error (e.g., display an error message to the user)
+            return;
         }
-    }
-    catch (error)
-    {
-        console.error('Error checking if image is running:', error.message);
-        // Handle the failure case
-        throw new Error(`Failed checking if image is running: ${error.message}`);
-    }
 
+        console.log("[INIT] COMPOSE done... Pinging the service until timeout or success.");
 
-}
-
-let product_launched = false;
-// ----------------------------------
-
-async function async_startContainer()
-{
-    let args = ['run'];
-    args = args.concat(dockerRunOptions);
-    args.push(imageName);
-    console.log("Starting container with args:", args);
-
-    try
-    {
-        await async_spawnContainer(args);
-    }
-    catch
-    {
-        console.error("Failed to start container with args:", args);      
-    }
-}
-
-
-async function async_restartContainer(containerId)
-{
-
-    let args = ['restart', containerId];  
-    console.log("Restarting container with args:", args);
-    try
-    {
-        await async_spawnContainer(args);
-    }
-    catch
-    {
-        console.error("Failed to restart container with args:", args);      
-    }
-}
-
-
-async function async_spawnContainer(spawn_args) 
-{
-    ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ⏳\nApplication ready: 😴`);
-    return new Promise((resolve, reject) => 
-    {
-        console.log("--- START CONTAINER ---");
-        //const composeProcess = spawn('docker-compose', ['up']);
-        const containerProcess = spawn('docker',spawn_args);
-        containerProcess.stdout.on('data', (data) => 
+        try
         {
-            console.log("CONTAINER: ", data.toString());
-            ipcRenderer.send('docker-output', data.toString());
+            const recurrent_ping_successful = await async_pingService(1, 3600, healthCheckUrl);
 
-            // check if the data contains the containerReadyString and if so, open the window to urlToLaunchWhenReady
-            if (data.toString().includes(containerReadyString)) 
+            if (!recurrent_ping_successful)
             {
-                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ☑️\nApplication ready: ☑️`);
-                if (!product_launched)
-                {
-                    ipcRenderer.send('open-product-window', urlToLaunchWhenReady);
-                    product_launched = true;
-                }
+                throw new Error("Failed to get the service running. Exiting.");
             }
-            
-            if (data.toString().includes(containerExistsString)) {
-                console.log("!!!!!! (from error) Container exists");
-                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ☑️\nApplication ready: ⏳`);
-            
-                /*
-                if (!product_launched)
-                {
-                    ipcRenderer.send('open-product-window', urlToLaunchWhenReady);
-                    product_launched = true;
-                }
-                */
-            }
-
-        });
-
-        containerProcess.stderr.on('data', (data) => 
+        }
+        catch
         {
-            console.error("ERROR: ", data.toString());
-            ipcRenderer.send('docker-output', data.toString());
-
-        });
-
-        containerProcess.on('close', (code) => 
-        {
-            console.log("CLOSE: ", code);
-            ipcRenderer.send('docker-output', `Docker-compose exited with code ${code}`); 
-            if (code === 0) 
-            { 
-                ipcRenderer.send('container-exited', code); // Optionally send the exit code to the renderer 
-                resolve(code); // Resolve the promise successfully with the exit code 
-            } 
-            else
-            {
-                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ⚠️`);
-                reject(new Error(`Docker-compose exited with code ${code}`)); 
-                // Reject the promise with an error
-            }
-        });
-    });
+            console.error("[INIT] Failed to get the service running. Exiting.");
+            return;
+        }
+    }
 }
-        
-contextBridge.exposeInMainWorld('electronAPI', {
 
-    // Function for the renderer to send messages to the main process
-    send: (channel, data) => {
-        // Channels the renderer process can send messages to
-        let validSendChannels = ['startDockerInstall', 'docker-status-update','container-status-update'];
-        if (validSendChannels.includes(channel)) {
-            ipcRenderer.send(channel, data);
-        }
-    },
-
-    // Function to receive messages from the main process
-    receive: (channel, func) => {
-        console.log("RECEIVE, channel =", channel);
-        let validReceiveChannels = ['docker-status-update','container-status-update', 'docker-output', 'container-exited'];
-        if (validReceiveChannels.includes(channel)) {
-            // Deliberately strip event as it includes `sender` and is a security risk
-            ipcRenderer.on(channel, (event, ...args) => func(...args));
-        }
-        else
-        {
-            console.error("Using unknown chanel: ", channel);
-        }
-    },
-
-    async electron_checkDockerInstalled() 
-    {
-        
-        const docker_is_installed = await async_checkDockerInstalled();
-        if (docker_is_installed)
-        {
-            ipcRenderer.send('docker-status-update', `Docker installed: ☑️\nDocker running: 👀`);
-        }
-        else
-        {
-            ipcRenderer.send('docker-status-update', `Docker installed: ⚠️\nDocker running: ⚠️`);
-        }
-        return docker_is_installed;
-    },
-
-
-    electron_startContainer: () => {
-        console.log("--- startContainer request received ---");
-        async_startContainer();
-    },
-
-    electron_openProductWindow: (url) => {
-        ipcRenderer.send('open-product-window', url);
-    },
-
-    electron_toggleDevTools: () => {
-        ipcRenderer.send('toggle-dev-tools');
-    },
-});
-
-
-console.log("INIT");
+console.log("INIT -----------------------------");
 async_init();
+console.log("POST INIT -----------------------------");
