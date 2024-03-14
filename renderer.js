@@ -13,12 +13,13 @@ document.addEventListener('DOMContentLoaded', () =>
 
   // --------------------------------------------------
   // Function to check Docker installation and update button state
+  /*
   async function renderer_checkDocker() 
   {
     const installed = await window.electronAPI.electron_checkDockerInstalled();
     //startContainerBtn.disabled = !installed;
   }
-
+  */
   function renderer_appendToTerminal(t, text) 
   {
     t.textContent += text;
@@ -51,13 +52,15 @@ document.addEventListener('DOMContentLoaded', () =>
     window.electronAPI.electron_openProductWindow(productWindowUrl);
   });
 
+  /*
   // Event listener for the start container button
   startContainerBtn.addEventListener('click', () => 
   {
     loadingUi.style.display = 'block'; // Show loading indicator
     window.electronAPI.electron_startContainer();
   });
-
+  */
+ 
   // Event listener for the dev tools button
   devToolsBtn.addEventListener('click', () => 
   {
@@ -78,6 +81,6 @@ document.addEventListener('DOMContentLoaded', () =>
 
   // --------------------------------------------------
   // Call the checkDocker function on load
-  renderer_checkDocker();
+  // renderer_checkDocker();
 });
 

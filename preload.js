@@ -338,110 +338,8 @@ async function async_checkIfImageIsRunning(imageName)
     });
 }
 
-
-let product_launched = false;
 // ----------------------------------
 
-async function async_startContainer()
-{
-    ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer STARTING: ⏳\nApplication ready: 😴`);
-
-    let args = ['run'];
-    args = args.concat(dockerRunOptions);
-    args.push(imageName);
-    console.log("Starting container with args:", args);
-
-    try
-    {
-        await async_spawnContainer(args);
-    }
-    catch
-    {
-        console.error("Failed to start container with args:", args);      
-    }
-}
-
-
-async function async_restartContainer(containerId)
-{
-    ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer RESTARTING: ⏳\nApplication ready: 😴`);
-
-    let args = ['restart', containerId];  
-    console.log("Restarting container with args:", args);
-    try
-    {
-        await async_spawnContainer(args);
-        await async_spawnContainer(['attach', containerId]);
-        
-    }
-    catch
-    {
-        console.error("Failed to restart container with args:", args);      
-    }
-}
-
-
-async function async_spawnContainer(spawn_args) 
-{
-    //ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ⏳\nApplication ready: 😴`);
-    return new Promise((resolve, reject) => 
-    {
-        console.log("START/RE-START CONTAINER with args: ",spawn_args);
-        //const composeProcess = spawn('docker-compose', ['up']);
-        const containerProcess = spawn('docker', spawn_args);
-        containerProcess.stdout.on('data', (data) => 
-        {
-            console.log("CONTAINER: ", data.toString());
-            ipcRenderer.send('docker-output', data.toString());
-
-            // check if the data contains the containerReadyString and if so, open the window to urlToLaunchWhenReady
-            if (data.toString().includes(containerReadyString)) 
-            {
-                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ☑️\nApplication ready: ☑️`);
-                ipcRenderer.send('open-product-window', urlToLaunchWhenReady);
-            }
-
-            /*
-            if (data.toString().includes(containerExistsString)) {
-                console.log("!!!!!! (from error) Container exists");
-                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ☑️\nApplication ready: ⏳`);
-            
-                if (!product_launched)
-                {
-                    ipcRenderer.send('open-product-window', urlToLaunchWhenReady);
-                    product_launched = true;
-                }
-            }
-            */
-
-        });
-
-        containerProcess.stderr.on('data', (data) => 
-        {
-            console.error("ERROR: ", data.toString());
-            ipcRenderer.send('docker-output', data.toString());
-
-        });
-
-        containerProcess.on('close', (code) => 
-        {
-            console.log("CLOSE: ", code);
-            ipcRenderer.send('docker-output', `Docker-compose exited with code ${code}`); 
-            if (code === 0) 
-            { 
-                ipcRenderer.send('container-exited', code); // Optionally send the exit code to the renderer 
-                resolve(code); // Resolve the promise successfully with the exit code 
-            } 
-            else
-            {
-                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ⚠️`);
-                reject(new Error(`Docker-compose exited with code ${code}`)); 
-                // Reject the promise with an error
-            }
-        });
-    });
-}
- 
 async function async_ping(url)
 {
     console.log('[ping]...');
@@ -470,10 +368,41 @@ async function async_ping(url)
 }
 
 
-async function async_recurringPing()
+//async function async_recurringPing() 
+async function async_pingService(intervalSeconds, timeoutSeconds, url) 
 {
+    const ping_url = url;
+    const ping_startTime = Date.now();
+    const ping_interval = intervalSeconds * 1000; // Convert seconds to milliseconds
+    const ping_timeout = timeoutSeconds * 1000; // Convert seconds to milliseconds
+    let ping_totalTime = 0;
+
     console.log("Date.now(), startTime, timeout, url: ", Date.now(), ping_startTime, ping_timeout, ping_url);
 
+    while (ping_totalTime < ping_timeout) 
+    {
+        try {
+            const ping_successful = await async_ping(ping_url);
+            if (ping_successful) 
+            {
+                console.log('Application is now healthy after waiting for ', ping_totalTime, 'milliseconds.');
+                return true;
+            }
+        } 
+        catch (error) 
+        {
+            console.error('Error while pinging the service:', error.message);
+        }
+
+        console.warn('[PING] Application is not responding (yet)...');
+        ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ⏳\nApplication ready: ⏳`);
+        await new Promise(resolve => setTimeout(resolve, ping_interval));
+        ping_totalTime += ping_interval;
+    }
+    console.error('[PING] Timeout reached, service did not start.');
+    return false;
+
+    /*
     if (Date.now() - ping_startTime > ping_timeout) 
     {
         console.error('[PING] Timeout reached, service did not start.');
@@ -498,9 +427,10 @@ async function async_recurringPing()
         console.error('[PING] Error pinging service or no response:', error.message);
         setTimeout(async_recurringPing, ping_interval); // Try again after the interval
     }
+    */
 }
 
-
+/*
 async function async_pingService(intervalSeconds, timeoutSeconds, url) 
 {
     console.log("async_pingService...");
@@ -511,7 +441,7 @@ async function async_pingService(intervalSeconds, timeoutSeconds, url)
     const result = async_recurringPing();
     return result;
 }
-
+*/
 
 
 async function async_composeContainer() 
@@ -590,6 +520,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         }
     },
 
+    /*
     async electron_checkDockerInstalled() 
     {
         
@@ -604,12 +535,41 @@ contextBridge.exposeInMainWorld('electronAPI', {
         }
         return docker_is_installed;
     },
-
-
+    */
+    /*
     electron_startContainer: () => {
         console.log("--- startContainer request received ---");
-        async_startContainer();
+        const docker_is_installed = async_execAndCheck('docker --version', null);
+        if (!docker_is_installed) 
+        {
+            console.error("Docker is not installed");
+            return;
+        }
+
+        const docker_is_running = async_execAndCheck('docker info', null);
+        if (!docker_is_running) 
+        {
+            console.error("Docker is not running");
+            return;
+        }
+
+        const dockerCompose_is_installed = async_execAndCheck('docker-compose --version', null);
+        if (!dockerCompose_is_installed) 
+        {
+            console.error("Docker Compose is not installed");
+            return;
+        }
+
+        const dockerCompose_container_running = async_execAndCheck(`docker-compose ls --format json`, []);
+        if (dockerCompose_container_running) 
+        {
+            console.warn("Container is already running");
+            return;
+        }
+
+        async_composeContainer();
     },
+    */
 
     electron_openProductWindow: (url) => {
         ipcRenderer.send('open-product-window', url);
@@ -746,3 +706,48 @@ async function async_init()
 console.log("INIT -----------------------------");
 async_init();
 console.log("POST INIT -----------------------------");
+
+
+// function to exec a command, look at the result and compare it with either a string or, if not provided, a json object or, if not provided, return true if the result isn't null
+// if the result is null, it will return false
+// if the result is a string, it will compare it with the provided string
+// if the result is an object, it will compare it with the provided object
+// if the result is an array, it will compare it with the provided array
+// if the result is a number, it will compare it with the provided number
+// if the result is a boolean, it will compare it with the provided boolean
+async function async_execAndCheck(command, trueIfNotEqualTo = null)
+{
+    try
+    {
+        const result = exec(command);
+        if (typeof trueIfNotEqualTo === 'string')
+        {
+            // true if trueIfNotEqualTo is not a substring of result
+            return !result.includes(trueIfNotEqualTo);
+        }
+        if (typeof trueIfNotEqualTo === 'object')
+        {
+            return result !== trueIfNotEqualTo;
+        }
+        if (typeof trueIfNotEqualTo === 'array')
+        {
+            return result !== trueIfNotEqualTo;
+        }
+
+        return result !== trueIfNotEqualTo;
+    }
+    catch
+    {
+        return false;
+    }
+}
+/* USAGE:
+const docker_is_installed = async_execAndCheck('docker --version', null);
+const docker_is_running = async_execAndCheck('docker info', null);
+const docker_image_exists = async_execAndCheck(`docker images -q ${imageName}`, null);
+const docker_image_downloaded = async_execAndCheck(`docker pull ${imageName}`, null);
+const dockerCompose_is_installed = async_execAndCheck('docker-compose --version', null);
+const dockerCompose_is_running = async_execAndCheck('docker-compose ps --format json', null);
+const dockerCompose_container_exists = async_execAndCheck(`docker-compose start`, "has no container to start");
+const dockerCompose_container_running = async_execAndCheck(`docker-compose ls --format json`, []);
+*/

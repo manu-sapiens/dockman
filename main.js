@@ -1,6 +1,8 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
 const path = require('path');
 
+let appWindows = null;
+
 function createMainWindow() 
 {
     // Create the browser window.
@@ -53,19 +55,34 @@ function createMainWindow()
 
     ipcMain.on('open-product-window', (event, url) =>
     {
-        const modal = new BrowserWindow({
+        // first check if the window is already open
+        // if it is, just focus it
+        // if it's not, create a new window
+        if (appWindows)
+        {
+            //make sure it has not been destroyed
+            if (appWindows.isDestroyed())
+            {
+                appWindows = null;
+            }
+            else
+            {
+                appWindows.focus();
+                return;
+            }
+        }
+
+        appWindows = new BrowserWindow({
             width: 1024,
             height: 1024,
             webPreferences: {
                 nodeIntegration: false, // It's a good practice to turn off node integration for web content
                 contextIsolation: true, // Protect against prototype pollution
                 enableRemoteModule: true, // Turn off remote
-                //preload: path.join(__dirname, 'preload.js') // Use a preload script
-
             }
         });
 
-        modal.loadURL(url);
+        appWindows.loadURL(url);
     });
 
     ipcMain.on('open-new-window', (event, url) =>
