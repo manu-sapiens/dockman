@@ -7,7 +7,7 @@ const axios = require('axios');
 const { resolve } = require('path');
 
 
-
+const serviceName = "omnitool";
 const containerReadyString = "Server has started and is ready to accept connections on";
 const containerExistsString = "Attaching to ";
 const urlToLaunchWhenReady = "http://127.0.0.1:1688";
@@ -23,12 +23,6 @@ const dockerRunOptions =
 const urlToDownloadDockerDesktop = "https://www.docker.com/products/docker-desktop/";
 //const dockerComposeYaml = fs.readFileSync('./docker-compose.yml', 'utf8');
 //const dockerComposeConfig = yaml.load(dockerComposeYaml);
-
-let ping_startTime = 0;
-let ping_interval = 0;
-let ping_timeout = 0;
-let ping_url = "";
-
 
 
 // ----------------------------------
@@ -162,12 +156,12 @@ async function async_checkImageDownloaded(imageName)
                 if (imageExists) 
                 {
                     console.log('Image exists:', imageName);
-                    ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: 😴\nApplication ready: 😴`);
+                    ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nApplication ready: 😴`);
                 } 
                 else 
                 {
                     console.log('Image does not exist:', imageName);
-                    ipcRenderer.send('container-status-update', `Container downloaded: X\nContainer running: 😴\nApplication ready: 😴`);
+                    ipcRenderer.send('container-status-update', `Container downloaded: X\nApplication ready: 😴`);
                 }
 
                 resolve(imageExists);
@@ -179,7 +173,7 @@ async function async_checkImageDownloaded(imageName)
 async function async_downloadOrUpdateImage(imageName) 
 {
     console.log("Downloading or updating image:", imageName);
-    ipcRenderer.send('container-status-update', `Container downloading: ⏳\nContainer running: 😴\nApplication ready: 😴`);
+    ipcRenderer.send('container-status-update', `Container downloading: ⏳\nApplication ready: 😴`);
 
     return new Promise((resolve, reject) => 
     {
@@ -194,21 +188,21 @@ async function async_downloadOrUpdateImage(imageName)
         pullProcess.stderr.on('data', (data) => 
         {
             console.error(`stderr: ${data}`);
-            ipcRenderer.send('docker-output', data.toString()); // Send error feedback
+            ipcRenderer.send('docker-output-error', data.toString()); // Send error feedback
         });
 
         pullProcess.on('close', (code) => 
         {
             if (code === 0) 
             {
-                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: 😴\nApplication ready: 😴`);
+                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nApplication ready: 😴`);
                 console.log('Image pulled successfully');
                 resolve(true);
             }
             else
             {
                 console.error('Failed to pull image');
-                ipcRenderer.send('container-status-update', `Container downloaded: ⚠️\nContainer running: ⚠️\nApplication ready: ⚠️`);
+                ipcRenderer.send('container-status-update', `Container downloaded: ⚠️\nApplication ready: ⚠️`);
                 reject(new Error('Failed to pull image'));
             }
         });
@@ -288,56 +282,6 @@ async function async_startDocker()
     
 }
 
-
-async function async_checkIfImageIsRunning(imageName) 
-{
-    console.log("Checking if image:", imageName, "is running...");
-
-    return new Promise((resolve, reject) => 
-    {
-        const execString = `docker ps --filter "ancestor=${imageName}" --format json`;
-        console.log("execString:", execString);
-        exec(execString, (error, stdout, stderr) =>
-        {
-            console.log("stdout:", stdout);
-            console.log("stderr:", stderr);
-            console.log("error:", error);
-
-            if (error) 
-            {
-                console.error(`Error checking if image is running: ${error}`);
-                reject(error);
-            }
-            else 
-            {
-                if (stdout !== "")            
-                {
-                    try
-                    {
-                        const jsonOutput = JSON.parse(stdout);
-                        console.log("jsonOutput:", jsonOutput);
-                        const imageId = jsonOutput.ID;
-                        if (imageId)
-                        {
-                            console.log('Image is running:', imageName, " id = ", imageId);
-                            resolve(imageId);
-                            return;
-                        }
-                    }
-                    catch (error)
-                    {
-                        console.error('Error parsing docker ps stdout:', error.message);
-                    }
-                }
-
-                console.log('Image is not running:', imageName);
-                resolve(null);
-                return;
-            }
-        });
-    });
-}
-
 // ----------------------------------
 
 async function async_ping(url)
@@ -350,7 +294,7 @@ async function async_ping(url)
         if (response.status === 200) {
             console.log('[ping] Service is healthy');
             console.log('[PING] Service is up and running. Opening product window.');
-            ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ☑️\nApplication ready: ☑️`);
+            ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nApplication ready: ☑️`);
             ipcRenderer.send('open-product-window', urlToLaunchWhenReady);    
             return true;
         } 
@@ -395,7 +339,7 @@ async function async_pingService(intervalSeconds, timeoutSeconds, url)
         }
 
         console.warn('[PING] Application is not responding (yet)...');
-        ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ⏳\nApplication ready: ⏳`);
+        ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nApplication ready: ⏳`);
         await new Promise(resolve => setTimeout(resolve, ping_interval));
         ping_totalTime += ping_interval;
     }
@@ -444,9 +388,8 @@ async function async_pingService(intervalSeconds, timeoutSeconds, url)
 */
 
 
-async function async_composeContainer() 
+async function async_composeContainer(command = ['up']) 
 {
-    ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer CHECKING: ⏳\nApplication ready: 😴`);
     return new Promise((resolve, reject) => 
     {
         console.log("DOCKER COMPOSE UP");
@@ -456,39 +399,41 @@ async function async_composeContainer()
             console.log("CONTAINER: ", data.toString());
             ipcRenderer.send('docker-output', data.toString());
 
-            /*
+            
             // check if the data contains the containerReadyString and if so, open the window to urlToLaunchWhenReady
             if (data.toString().includes(containerReadyString)) 
             {
-                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ☑️\nApplication ready: ☑️`);
-                ipcRenderer.send('open-product-window', urlToLaunchWhenReady);
+                // send a command to refresh the application window
+                ipcRenderer.send('refresh-product-window');
             }
-            */
 
         });
 
         composeProcess.stderr.on('data', (data) => 
         {
             console.error("ERROR: ", data.toString());
-            ipcRenderer.send('docker-output', data.toString());
+            ipcRenderer.send('docker-output-error', data.toString());
 
         });
 
         composeProcess.on('close', (code) => 
         {
             console.log("CLOSE: ", code);
+            ipcRenderer.send('container-status-update', `Container downloaded: ☑️\Application ready: ⚠️`);
             ipcRenderer.send('docker-output', `Docker-compose exited with code ${code}`); 
             if (code === 0) 
             { 
                 ipcRenderer.send('container-exited', code); // Optionally send the exit code to the renderer 
                 //resolve(code); // Resolve the promise successfully with the exit code 
+                async_composeContainer();
             } 
             else
             {
-                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ⚠️`);
+                ipcRenderer.send('container-status-update', `Container downloaded: ☑️\Application ready: ⚠️`);
                 reject(new Error(`Docker-compose exited with code ${code}`)); 
                 // Reject the promise with an error
             }
+            
         });
 
         resolve(true);
@@ -509,7 +454,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // Function to receive messages from the main process
     receive: (channel, func) => {
         console.log("RECEIVE, channel =", channel);
-        let validReceiveChannels = ['docker-status-update','container-status-update', 'docker-output', 'container-exited'];
+        let validReceiveChannels = ['docker-status-update','container-status-update', 'docker-output', 'docker-output-error', 'container-exited'];
         if (validReceiveChannels.includes(channel)) {
             // Deliberately strip event as it includes `sender` and is a security risk
             ipcRenderer.on(channel, (event, ...args) => func(...args));
@@ -671,11 +616,11 @@ async function async_init()
     if (!inital_ping_successful)
     {
         console.error("[INIT] Inital ping failed. Will Compose-Up the container now...");
-        ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nContainer running: ⏳\nApplication ready: 😴`);
 
         try
         {
-            await async_composeContainer();
+            ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nApplication ready: ⏳`);
+            await async_composeContainer(['up']);
         }
         catch (error)
         {
@@ -700,6 +645,12 @@ async function async_init()
             console.error("[INIT] Failed to get the service running. Exiting.");
             return;
         }
+    }
+    else
+    {
+        console.log("[INIT] Inital ping successful. Attaching to service.");
+        await async_composeContainer(['attach', serviceName]);
+    
     }
 }
 

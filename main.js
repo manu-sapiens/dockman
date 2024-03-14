@@ -43,6 +43,11 @@ function createMainWindow()
         mainWindow.webContents.send('docker-output', data);
     });
 
+    ipcMain.on('docker-output-error', (event, data) => 
+    {
+        mainWindow.webContents.send('docker-output-error', data);
+    });
+
     ipcMain.on('docker-status-update', (event, data) => 
     {
         mainWindow.webContents.send('docker-status-update', data);
@@ -51,6 +56,22 @@ function createMainWindow()
     ipcMain.on('container-status-update', (event, data) => 
     {
         mainWindow.webContents.send('container-status-update', data);
+    });
+
+    ipcMain.on('refresh-product-window', (event) =>
+    {
+        if (appWindows)
+        {
+            if (appWindows.isDestroyed())
+            {
+                console.warn("appWindows is destroyed");
+            }
+            else
+            {
+                console.log("Reloading App Window");
+                appWindows.reload();
+            }
+        }
     });
 
     ipcMain.on('open-product-window', (event, url) =>
