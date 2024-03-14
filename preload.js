@@ -387,8 +387,28 @@ async function async_pingService(intervalSeconds, timeoutSeconds, url)
 }
 */
 
+async function async_composeContainer(command = ['up'])
+{
+    await async_composeContainer_partI(command);
 
-async function async_composeContainer(command = ['up']) 
+    try
+    {
+        const recurrent_ping_successful = await async_pingService(1, 3600, healthCheckUrl);
+
+        if (!recurrent_ping_successful)
+        {
+            throw new Error("Failed to get the service running. Exiting.");
+        }
+    }
+    catch
+    {
+        console.error("[INIT] Failed to get the service running. Exiting.");
+        return;
+    }
+
+}
+
+async function async_composeContainer_partI(command = ['up']) 
 {
     return new Promise((resolve, reject) => 
     {
@@ -631,6 +651,7 @@ async function async_init()
 
         console.log("[INIT] COMPOSE done... Pinging the service until timeout or success.");
 
+        /*
         try
         {
             const recurrent_ping_successful = await async_pingService(1, 3600, healthCheckUrl);
@@ -645,6 +666,7 @@ async function async_init()
             console.error("[INIT] Failed to get the service running. Exiting.");
             return;
         }
+        */
     }
     else
     {

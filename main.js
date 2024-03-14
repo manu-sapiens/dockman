@@ -35,7 +35,30 @@ function createMainWindow()
     ipcMain.on('toggle-dev-tools', () => 
     {
         console.log("TOGGLE DEV TOOL");
-        mainWindow.webContents.openDevTools();
+
+        // Find if the developer tools is open
+        if (mainWindow.webContents.isDevToolsOpened())
+        {
+            // Close the developer tools
+            mainWindow.webContents.closeDevTools();
+        }
+        else
+        {
+            mainWindow.webContents.openDevTools();
+        }
+
+        // do the same for the appWindows
+        if (appWindows && appWindows.isDestroyed() === false)
+        {
+            if (appWindows.webContents.isDevToolsOpened())
+            {
+                appWindows.webContents.closeDevTools();
+            }
+            else
+            {
+                appWindows.webContents.openDevTools();
+            }
+        }
     });
 
     ipcMain.on('docker-output', (event, data) => 
@@ -70,6 +93,7 @@ function createMainWindow()
             {
                 console.log("Reloading App Window");
                 appWindows.reload();
+                appWindows.focus();
             }
         }
     });
