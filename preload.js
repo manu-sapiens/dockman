@@ -302,7 +302,7 @@ async function async_ping(url)
             console.log('[ping] Service is healthy');
             console.log('[PING] Service is up and running. Opening product window.');
             ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nApplication ready: ☑️`);
-            ipcRenderer.send('open-product-window', urlToLaunchWhenReady);    
+            ipcRenderer.send('refresh-product-window'); 
             return true;
         } 
         else 
@@ -393,7 +393,8 @@ async function async_composeContainer(command)
             if (data.toString().includes(containerReadyString)) 
             {
                 // send a command to refresh the application window
-                ipcRenderer.send('refresh-product-window');
+                ipcRenderer.send('open-product-window', urlToLaunchWhenReady);   
+                //ipcRenderer.send('refresh-product-window');
             }
 
         });
@@ -418,15 +419,15 @@ async function async_composeContainer(command)
             else
             {
                 ipcRenderer.send('container-status-update', `Container downloaded: ☑️\Application ready: ⚠️`);
-                reject(new Error(`Docker-compose exited with code ${code}`)); 
+                //reject(new Error(`Docker-compose exited with code ${code}`)); 
                 // Reject the promise with an error
+                resolve(false);
             }
 
-            async_startContainer(); // NO AWAIT HERE!
-
+            //async_startContainer(); // NO AWAIT HERE!
+            resolve(true);
         });
 
-        resolve(true);
     });
 }
 
@@ -599,7 +600,8 @@ async function async_init()
 
 console.log("INIT -----------------------------");
 //async_init();
-async_mainLoop();
+//async_mainLoop();
+async_continuousMonitor();
 console.log("POST INIT -----------------------------");
 
 
@@ -663,16 +665,6 @@ async function async_installDocker()
 
 async function async_main() 
 {
-    /*
-    let docker_is_installed = false;
-    try {docker_is_installed = await async_checkDockerInstalled();} catch (error) {console.error("ERROR while checking if docker is installed");}
-    if (!docker_is_installed) 
-    {
-        console.warn("Docker is not installed");
-        try {await async_installDocker();} catch (error) {console.error("ERROR while installing docker");}
-        return false;
-    }
-    */
 
     const docker_is_installed = await async_checkDockerInstalled();
     if (!docker_is_installed) 
@@ -707,15 +699,19 @@ async function async_main()
     const inital_ping_successful = await async_ping(healthCheckUrl);
     if (inital_ping_successful)
     {
-        async_composeContainer(['attach', serviceName]); // NO WAITING HERE!
+        console.log("Service is already running. Attaching to service.");
+        await async_composeContainer(['attach', serviceName]); // NO WAITING HERE!
     }
     else
     {
-        async_composeContainer(['up']); // NO WAITING HERE!
+        console.log("Service is not running. Starting container...")
+        await async_composeContainer(['up']); // NO WAITING HERE!
     }
 
-    const recurrent_ping_successful = await async_pingService(1, 3600, healthCheckUrl);
-    return recurrent_ping_successful;
+    //const recurrent_ping_successful = await async_pingService(1, 3600, healthCheckUrl);
+    //return recurrent_ping_successful;
+    const ping_successful = await async_ping(healthCheckUrl);
+    return ping_successful;
 }
 
 async function async_mainLoop()
@@ -740,4 +736,37 @@ async function async_mainLoop()
         console.error("Timeout while trying to get the service running.");
     }
 
+}
+
+async function async_continuousMonitor(check_period = 30000)
+{
+    console.log("Starting continuous monitor...");
+    let main_successful = await async_main();
+    console.log("main_successful = ", main_successful);
+
+    let iteration_count = 0;
+    while (true)
+    {
+        console.log("Iteration #: ", iteration_count++);
+        let ping_successful = await async_ping(healthCheckUrl);
+        if (!ping_successful)
+        {
+            main_successful = await async_main();
+            if (main_successful) 
+            {
+                await new Promise(resolve => setTimeout(resolve, check_period));
+            }
+            else
+            {
+                await new Promise(resolve => setTimeout(resolve, 10000));
+            }
+
+        }
+        else
+        {
+            await new Promise(resolve => setTimeout(resolve, check_period));
+        }
+
+        iteration_count++;
+    }
 }
