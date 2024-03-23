@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, shell } = require('electron');
 const { exec, spawn } = require('child_process');
 const yaml = require('js-yaml');
 const fs = require('fs');
@@ -6,7 +6,7 @@ const { start } = require('repl');
 const axios = require('axios');
 const { resolve } = require('path');
 
-
+const urlToDownloadDockerDesktop = "https://www.docker.com/products/docker-desktop/";
 const serviceName = "omnitool";
 const containerReadyString = "Server has started and is ready to accept connections on";
 const containerExistsString = "Attaching to ";
@@ -20,7 +20,7 @@ const dockerRunOptions =
     '-v','./omnitool.data/file-export:/app/omnitool/packages/omni-server/data.local/file-export',
 ];
 
-const urlToDownloadDockerDesktop = "https://www.docker.com/products/docker-desktop/";
+
 //const dockerComposeYaml = fs.readFileSync('./docker-compose.yml', 'utf8');
 //const dockerComposeConfig = yaml.load(dockerComposeYaml);
 
@@ -30,7 +30,7 @@ async function async_checkDockerInstalled()
 {
     console.log("[async_checkDockerInstalled] Checking if Docker is installed...");
     console.log("----> docker-status-update (Checking)");
-    return new Promise((resolve, reject) => 
+    return new Promise((resolve) => 
     {
         exec('docker --version', (error, stdout, stderr) => 
         {
@@ -49,29 +49,36 @@ async function async_checkDockerInstalled()
     });
 }
 
-async function async_periodicallyCheckIfDockerIsInstalled(timeout = 3600000) {
+async function async_waitForDockerToBeInstalled(intervalTime = 10000, timeout = 3600000) {
     console.log("Waiting for Docker to be installed...");
 
-    const intervalTime = 1000; // Check every second
     let totalTime = 0;
-
     // Create a loop that continues until Docker is running or until the timeout is reached
     while (totalTime < timeout) {
         try {
             // Try checking if Docker is running
-            await async_checkDockerInstalled();
-            console.log('Docker is now installed after waiting for ', totalTime, 'milliseconds.');
-            return true; // Exit the loop and function since Docker is running
-        } catch (error) {
-            // If Docker isn't running, wait for a second and try again
-            ipcRenderer.send('docker-status-update', `Docker installed: ⏳\nDocker running: 😴`);
-            await new Promise(resolve => setTimeout(resolve, intervalTime));
-            totalTime += intervalTime;
+            const docker_is_installed = await async_checkDockerInstalled();
+            if (docker_is_installed) 
+            {
+                console.log('Docker is now installed after waiting for ', totalTime, 'milliseconds.');
+                return true; // Exit the loop and function since Docker is running
+            }
+        } 
+        catch (error) 
+        {
+            // Error while checking if Docker is running
+            console.error('Error while checking if Docker is installed:', error.message);
+            return false;
         }
-    }
 
+        // If Docker isn't running, wait for a second and try again
+        await new Promise(resolve => setTimeout(resolve, intervalTime));
+        totalTime += intervalTime;
+       
+    }
     // If the loop exits due to timeout, throw an error
-    throw new Error('Timeout waiting for Docker to run after ' + (timeout/1000.0) + ' seconds');
+    console.warn('Timeout waiting for Docker to be installed after ' + (timeout/1000.0) + ' seconds');
+    return false;
 }
 
 async function async_checkDockerRunning() {
@@ -345,70 +352,32 @@ async function async_pingService(intervalSeconds, timeoutSeconds, url)
     }
     console.error('[PING] Timeout reached, service did not start.');
     return false;
-
-    /*
-    if (Date.now() - ping_startTime > ping_timeout) 
-    {
-        console.error('[PING] Timeout reached, service did not start.');
-        return false;
-    }
-
-    try 
-    {
-        const ping_successful = await async_ping(ping_url);
-        if (ping_successful) 
-        {
-            return true;
-        }
-        else 
-        {
-            console.error('[PING] Service is NOT up and running.');
-            setTimeout(async_recurringPing, ping_interval); // Try again after the interval
-        }
-    }
-    catch (error) 
-    {
-        console.error('[PING] Error pinging service or no response:', error.message);
-        setTimeout(async_recurringPing, ping_interval); // Try again after the interval
-    }
-    */
 }
 
-/*
-async function async_pingService(intervalSeconds, timeoutSeconds, url) 
+async function async_startContainer()
 {
-    console.log("async_pingService...");
-    ping_url = url;
-    ping_startTime = Date.now();
-    ping_interval = intervalSeconds * 1000; // Convert seconds to milliseconds
-    ping_timeout = timeoutSeconds * 1000; // Convert seconds to milliseconds
-    const result = async_recurringPing();
-    return result;
-}
-*/
-
-async function async_composeContainer(command = ['up'])
-{
-    await async_composeContainer_partI(command);
+    async_composeContainer(['up']); // WE DON'T WAIT FOR THE RESULT HERE!
 
     try
     {
         const recurrent_ping_successful = await async_pingService(1, 3600, healthCheckUrl);
-
         if (!recurrent_ping_successful)
         {
-            throw new Error("Failed to get the service running. Exiting.");
+            console.warn("Timeout while trying to get the service running.");
+            return false;
         }
     }
     catch
     {
-        console.error("[INIT] Failed to get the service running. Exiting.");
-        return;
+        console.error("ERROR while pinging the service");
+        throw new Error("Failed to get the service running.");    
     }
+
+    return true;
 
 }
 
-async function async_composeContainer_partI(command = ['up']) 
+async function async_composeContainer(command) 
 {
     return new Promise((resolve, reject) => 
     {
@@ -445,7 +414,6 @@ async function async_composeContainer_partI(command = ['up'])
             { 
                 ipcRenderer.send('container-exited', code); // Optionally send the exit code to the renderer 
                 //resolve(code); // Resolve the promise successfully with the exit code 
-                async_composeContainer();
             } 
             else
             {
@@ -453,7 +421,9 @@ async function async_composeContainer_partI(command = ['up'])
                 reject(new Error(`Docker-compose exited with code ${code}`)); 
                 // Reject the promise with an error
             }
-            
+
+            async_startContainer(); // NO AWAIT HERE!
+
         });
 
         resolve(true);
@@ -461,6 +431,8 @@ async function async_composeContainer_partI(command = ['up'])
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
+
+    openExternal: (url) => shell.openExternal(url),
 
     // Function for the renderer to send messages to the main process
     send: (channel, data) => {
@@ -484,57 +456,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
             console.error("Using unknown chanel: ", channel);
         }
     },
-
-    /*
-    async electron_checkDockerInstalled() 
-    {
-        
-        const docker_is_installed = await async_checkDockerInstalled();
-        if (docker_is_installed)
-        {
-            ipcRenderer.send('docker-status-update', `Docker installed: ☑️\nDocker running: 👀`);
-        }
-        else
-        {
-            ipcRenderer.send('docker-status-update', `Docker installed: ⚠️\nDocker running: ⚠️`);
-        }
-        return docker_is_installed;
-    },
-    */
-    /*
-    electron_startContainer: () => {
-        console.log("--- startContainer request received ---");
-        const docker_is_installed = async_execAndCheck('docker --version', null);
-        if (!docker_is_installed) 
-        {
-            console.error("Docker is not installed");
-            return;
-        }
-
-        const docker_is_running = async_execAndCheck('docker info', null);
-        if (!docker_is_running) 
-        {
-            console.error("Docker is not running");
-            return;
-        }
-
-        const dockerCompose_is_installed = async_execAndCheck('docker-compose --version', null);
-        if (!dockerCompose_is_installed) 
-        {
-            console.error("Docker Compose is not installed");
-            return;
-        }
-
-        const dockerCompose_container_running = async_execAndCheck(`docker-compose ls --format json`, []);
-        if (dockerCompose_container_running) 
-        {
-            console.warn("Container is already running");
-            return;
-        }
-
-        async_composeContainer();
-    },
-    */
 
     electron_openProductWindow: (url) => {
         ipcRenderer.send('open-product-window', url);
@@ -564,7 +485,7 @@ async function async_init()
         console.log("OPENING a window to install docker");
 
         ipcRenderer.send('open-new-window', urlToDownloadDockerDesktop);
-        await async_periodicallyCheckIfDockerIsInstalled();
+        await async_waitForDockerToBeInstalled();
     }
 
     // Docker is installed... but is it running?
@@ -640,7 +561,7 @@ async function async_init()
         try
         {
             ipcRenderer.send('container-status-update', `Container downloaded: ☑️\nApplication ready: ⏳`);
-            await async_composeContainer(['up']);
+            await async_startContainer(['up']);
         }
         catch (error)
         {
@@ -671,13 +592,14 @@ async function async_init()
     else
     {
         console.log("[INIT] Inital ping successful. Attaching to service.");
-        await async_composeContainer(['attach', serviceName]);
+        await async_startContainer(['attach', serviceName]);
     
     }
 }
 
 console.log("INIT -----------------------------");
-async_init();
+//async_init();
+async_mainLoop();
 console.log("POST INIT -----------------------------");
 
 
@@ -724,3 +646,98 @@ const dockerCompose_is_running = async_execAndCheck('docker-compose ps --format 
 const dockerCompose_container_exists = async_execAndCheck(`docker-compose start`, "has no container to start");
 const dockerCompose_container_running = async_execAndCheck(`docker-compose ls --format json`, []);
 */
+
+async function async_installDocker()
+{
+    ipcRenderer.send('open-new-window', "download-docker.html");
+    let docker_is_installed = false;
+    try {docker_is_installed = await async_waitForDockerToBeInstalled();} catch (error) {console.error("ERROR while checking if docker is installed");}
+    if (!docker_is_installed) 
+    {
+        console.warn("Docker is not installed yet...");
+        return false;
+    }    
+    console.warn("Docker is NOW installed!");
+    return true;
+}
+
+async function async_main() 
+{
+    /*
+    let docker_is_installed = false;
+    try {docker_is_installed = await async_checkDockerInstalled();} catch (error) {console.error("ERROR while checking if docker is installed");}
+    if (!docker_is_installed) 
+    {
+        console.warn("Docker is not installed");
+        try {await async_installDocker();} catch (error) {console.error("ERROR while installing docker");}
+        return false;
+    }
+    */
+
+    const docker_is_installed = await async_checkDockerInstalled();
+    if (!docker_is_installed) 
+    {
+        console.warn("Docker is not installed");
+        ipcRenderer.send('docker-status-update', `Docker status: NOT INSTALLED`);
+        ipcRenderer.send('container-status-update', `Docker is not installed on your machine.\nWe recommend installing Docker Studio from ${urlToDownloadDockerDesktop} and then coming back here.\n`);
+        await async_installDocker();
+        return false;
+    }
+
+    let docker_is_running = false;
+    try {docker_is_running = await async_checkDockerRunning();} catch (error) {console.error("ERROR while checking if docker is running");}
+    if (!docker_is_running) 
+    {
+        console.warn("Docker is not running - attempting to start it...");
+        try {await async_startDocker();} catch (error) {console.error("Error starting Docker:", error.message);}
+        return false;
+    }
+    
+    let docker_image_exists = false;
+    try {docker_image_exists = await async_checkImageDownloaded(imageName);} catch (error) {console.error("Error checking for Docker image:", error.message);}
+    if (!docker_image_exists) 
+    {
+        console.warn("Image not found. Downloading now...");
+        try {await async_downloadOrUpdateImage(imageName);} catch (error) {console.error("Error downloading Docker image:", error.message);}
+        return false;
+    }
+    
+    let initial_health_ping_successful = false;
+    try {initial_health_ping_successful = await async_ping(healthCheckUrl);} catch (error) {console.error("Error pinging service or no response:", error.message);}
+    const inital_ping_successful = await async_ping(healthCheckUrl);
+    if (inital_ping_successful)
+    {
+        async_composeContainer(['attach', serviceName]); // NO WAITING HERE!
+    }
+    else
+    {
+        async_composeContainer(['up']); // NO WAITING HERE!
+    }
+
+    const recurrent_ping_successful = await async_pingService(1, 3600, healthCheckUrl);
+    return recurrent_ping_successful;
+}
+
+async function async_mainLoop()
+{
+    let loop_successful = false;
+    let loop_count = 0;
+    while (!loop_successful && loop_count < 100)
+    {
+        loop_successful = await async_main();
+        loop_count++;
+        // wait for 5 s
+        await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+
+    if (loop_successful)
+    {
+        console.log("Service is up and running. Opening product window.");
+        ipcRenderer.send('open-product-window', urlToLaunchWhenReady);
+    }
+    else
+    {
+        console.error("Timeout while trying to get the service running.");
+    }
+
+}

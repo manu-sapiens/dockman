@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 
 let appWindows = null;
@@ -132,21 +132,31 @@ function createMainWindow()
 
     ipcMain.on('open-new-window', (event, url) =>
     {
+        //// launch the default browser
+        //const { shell } = require('electron');
+        //shell.openExternal(url);
+       
         const modal = new BrowserWindow({
-            width: 600,
+            width: 800,
             height: 600,
             parent: mainWindow,
             webPreferences: {
-                nodeIntegration: false, // It's a good practice to turn off node integration for web content
+                nodeIntegration: true, // It's a good practice to turn off node integration for web content
                 contextIsolation: true, // Protect against prototype pollution
+                enableRemoteModule: true,
+                preload: path.join(__dirname, 'preload2.js') // Use a preload script
             }
         });
 
-        modal.loadURL(url);
+        
+        modal.loadFile(url);
+        modal.webContents.openDevTools();
+        //modal.loadURL(url);
+        
     });
 
     // !!!!!! DEBUG
-    //mainWindow.webContents.openDevTools();
+    mainWindow.webContents.openDevTools();
 }
 
 // This method will be called when Electron has finished
