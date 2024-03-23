@@ -21,16 +21,6 @@ function createMainWindow()
     // and load the index.html of the app.
     mainWindow.loadFile('index.html');
 
-    // Listen for messages from the renderer
-    /*
-    ipcMain.on('startDockerInstall', (event, args) => {
-        // Logic to start Docker installation
-
-        // Periodically send status updates back to the renderer
-        mainWindow.webContents.send('docker-status-update', 'Docker installation started');
-    });
-    */
-
     // Listen for the toggle-dev-tools message
     ipcMain.on('toggle-dev-tools', () => 
     {
@@ -71,15 +61,26 @@ function createMainWindow()
         mainWindow.webContents.send('docker-output-error', data);
     });
 
-    ipcMain.on('docker-status-update', (event, data) => 
+    ipcMain.on('docker-installed-status', (event, data) => 
     {
-        mainWindow.webContents.send('docker-status-update', data);
+        mainWindow.webContents.send('docker-installed-status', data);
     });
 
-    ipcMain.on('container-status-update', (event, data) => 
+    ipcMain.on('docker-running-status', (event, data) => 
     {
-        mainWindow.webContents.send('container-status-update', data);
+        mainWindow.webContents.send('docker-running-status', data);
     });
+
+    ipcMain.on('app-installed-status', (event, data) => 
+    {
+        mainWindow.webContents.send('app-installed-status', data);
+    });
+
+    ipcMain.on('app-running-status', (event, data) => 
+    {
+        mainWindow.webContents.send('app-running-status', data);
+    });
+
 
     ipcMain.on('refresh-product-window', (event) =>
     {

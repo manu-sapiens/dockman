@@ -9,8 +9,10 @@ document.addEventListener('DOMContentLoaded', () =>
   const devToolsBtn = document.getElementById('devToolsButton');
   const openProductBtn = document.getElementById('openProductButton');
   const loadingUi = document.getElementById('loadingIndicator');
-  const dockerStatus = document.getElementById('dockerStatus');
-  const containerStatus = document.getElementById('containerStatus');
+  const dockerInstalledStatus = document.getElementById('dockerInstalledStatus');
+  const dockerRunningStatus = document.getElementById('dockerRunningStatus');
+  const appInstalledStatus = document.getElementById('appInstalledStatus');
+  const appRunningStatus = document.getElementById('appRunningStatus');
   const stripText = "omnitool-1  | ";
  
   // --------------------------------------------------
@@ -63,23 +65,43 @@ document.addEventListener('DOMContentLoaded', () =>
   }
 
   // Listen for Docker status updates from the main process
-  window.electronAPI.receive('docker-status-update', (message) => 
+  window.electronAPI.receive('docker-installed-status', (message) => 
   {
-    console.log(`[renderer.js] docker-status-update message = ${message}`);
+    console.log(`[renderer.js] docker-installed-status message = ${message}`);
     
     // Update your UI based on the message
-    dockerStatus.innerText = message;
+    dockerInstalledStatus.innerText = message;
   });
 
+    // Listen for Docker status updates from the main process
+    window.electronAPI.receive('docker-running-status', (message) => 
+    {
+      console.log(`[renderer.js] docker-running-status message = ${message}`);
+      
+      // Update your UI based on the message
+      dockerRunningStatus.innerText = message;
+    });
+  
+  
 
   // Listen for Container status updates from the main process
-  window.electronAPI.receive('container-status-update', (message) => 
+  window.electronAPI.receive('app-installed-status', (message) => 
   {
-    console.log(`[renderer.js] container-status-update message = ${message}`);
+    console.log(`[renderer.js] app-installed-status message = ${message}`);
    
     // Update your UI based on the message
-    containerStatus.innerText = message;
+    appInstalledStatus.innerText = message;
   });
+
+  // Listen for Container status updates from the main process
+  window.electronAPI.receive('app-running-status', (message) => 
+  {
+    console.log(`[renderer.js] app-running-status message = ${message}`);
+  
+    // Update your UI based on the message
+    appRunningStatus.innerText = message;
+  });
+
 
 
   // --------------------------------------------------
