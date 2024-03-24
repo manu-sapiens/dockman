@@ -86,7 +86,9 @@ async function async_waitForDockerToBeInstalled(intervalTime = 10000, timeout = 
     
     let totalTime = 0;
     // Create a loop that continues until Docker is running or until the timeout is reached
-    while (totalTime < timeout) {
+    while (totalTime < timeout) 
+    {
+        console.log("TICK...");
         try {
             ipcRenderer.send('docker-installed-status', icon_checking);
             // Try checking if Docker is running
@@ -438,9 +440,11 @@ console.log("POST INIT -----------------------------");
 
 async function async_installDocker()
 {
-    ipcRenderer.send('open-new-window', "download-docker.html");
-    let docker_is_installed = false;
-    try {docker_is_installed = await async_waitForDockerToBeInstalled();} catch (error) {console.error("ERROR while checking if docker is installed");}
+    console.log("PRE async_installDocker -----------------------------");
+    ipcRenderer.send('open-download-window');
+    const docker_is_installed = await async_waitForDockerToBeInstalled();
+    console.log("POST async_installDocker -----------------------------");
+
     if (!docker_is_installed) 
     {
         console.warn("Docker is not installed yet...");
@@ -482,9 +486,9 @@ async function async_main()
     if (inital_ping_successful)
     {
         console.log("Service is already running. Attaching to service.");
-        ipcRenderer.send('open-product-window', urlToLaunchWhenReady);
-        ipcRenderer.send('docker-output', "Attaching to existing Service...");
-        await async_composeContainer(['attach', serviceName]);
+        //ipcRenderer.send('open-product-window', urlToLaunchWhenReady);
+        ipcRenderer.send('docker-output', "Restarting existing Service...");
+        await async_composeContainer(['restart']);//['attach', serviceName]);
     }
     else
     {

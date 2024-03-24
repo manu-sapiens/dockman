@@ -1,12 +1,13 @@
 const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
+const icon_yes = "☑️";
 
 let appWindows = null;
 
-function createMainWindow() 
+function createManagerWindow() 
 {
     // Create the browser window.
-    const mainWindow = new BrowserWindow(
+    const managerWindow = new BrowserWindow(
         {
             width: 800,
             height: 800,
@@ -19,7 +20,7 @@ function createMainWindow()
         });
 
     // and load the index.html of the app.
-    mainWindow.loadFile('index.html');
+    managerWindow.loadFile('index.html');
 
     // Listen for the toggle-dev-tools message
     ipcMain.on('toggle-dev-tools', () => 
@@ -27,14 +28,14 @@ function createMainWindow()
         console.log("TOGGLE DEV TOOL");
 
         // Find if the developer tools is open
-        if (mainWindow.webContents.isDevToolsOpened())
+        if (managerWindow.webContents.isDevToolsOpened())
         {
             // Close the developer tools
-            mainWindow.webContents.closeDevTools();
+            managerWindow.webContents.closeDevTools();
         }
         else
         {
-            mainWindow.webContents.openDevTools();
+            managerWindow.webContents.openDevTools();
         }
 
         // do the same for the appWindows
@@ -53,32 +54,32 @@ function createMainWindow()
 
     ipcMain.on('docker-output', (event, data) => 
     {
-        mainWindow.webContents.send('docker-output', data);
+        managerWindow.webContents.send('docker-output', data);
     });
 
     ipcMain.on('docker-output-error', (event, data) => 
     {
-        mainWindow.webContents.send('docker-output-error', data);
+        managerWindow.webContents.send('docker-output-error', data);
     });
 
     ipcMain.on('docker-installed-status', (event, data) => 
     {
-        mainWindow.webContents.send('docker-installed-status', data);
+        managerWindow.webContents.send('docker-installed-status', data);
     });
 
     ipcMain.on('docker-running-status', (event, data) => 
     {
-        mainWindow.webContents.send('docker-running-status', data);
+        managerWindow.webContents.send('docker-running-status', data);
     });
 
     ipcMain.on('app-installed-status', (event, data) => 
     {
-        mainWindow.webContents.send('app-installed-status', data);
+        managerWindow.webContents.send('app-installed-status', data);
     });
 
     ipcMain.on('app-running-status', (event, data) => 
     {
-        mainWindow.webContents.send('app-running-status', data);
+        managerWindow.webContents.send('app-running-status', data);
     });
 
 
@@ -95,6 +96,23 @@ function createMainWindow()
                 console.log("Reloading App Window");
                 appWindows.reload();
                 appWindows.focus();
+            }
+        }
+    });
+
+    ipcMain.on('refresh-manager-window', (event) =>
+    {
+        if (managerWindow)
+        {
+            if (managerWindow.isDestroyed())
+            {
+                console.warn("mainWindow is destroyed");
+            }
+            else
+            {
+                console.log("Reloading Manager Window");
+                managerWindow.reload();
+                managerWindow.focus();
             }
         }
     });
@@ -131,16 +149,17 @@ function createMainWindow()
         appWindows.loadURL(url);
     });
 
-    ipcMain.on('open-new-window', (event, url) =>
+    ipcMain.on('open-download-window', (event) =>
     {
         //// launch the default browser
         //const { shell } = require('electron');
         //shell.openExternal(url);
-       
-        const modal = new BrowserWindow({
+        managerWindow.minimize();
+        
+        const downloadWindow = new BrowserWindow({
             width: 800,
             height: 600,
-            parent: mainWindow,
+            parent: null,
             webPreferences: {
                 nodeIntegration: true, // It's a good practice to turn off node integration for web content
                 contextIsolation: true, // Protect against prototype pollution
@@ -149,21 +168,30 @@ function createMainWindow()
             }
         });
 
-        
-        modal.loadFile(url);
-        modal.webContents.openDevTools();
-        //modal.loadURL(url);
+        ipcMain.on('docker-installed-status2', (event, data) => 
+        {
+            downloadWindow.webContents.send('docker-installed-status2', data +" Docker installed");
+            if (data === icon_yes)
+            {
+                downloadWindow.close();
+                managerWindow.restore();
+                managerWindow.focus();
+            }
+        });
+    
+        downloadWindow.loadFile("download-docker.html");
+        downloadWindow.webContents.openDevTools();
         
     });
 
     // !!!!!! DEBUG
-    mainWindow.webContents.openDevTools();
+    managerWindow.webContents.openDevTools();
 }
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
-app.whenReady().then(createMainWindow);
+app.whenReady().then(createManagerWindow);
 
 
 // Quit when all windows are closed, except on macOS. There, it's common
@@ -184,7 +212,7 @@ app.on('activate', () =>
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0)
     {
-        createMainWindow();
+        createManagerWindow();
     }
 });
 

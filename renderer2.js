@@ -1,5 +1,6 @@
 
 const urlToDownloadDockerDesktop = "https://www.docker.com/products/docker-desktop/";
+const dockerInstalledStatus2 = document.getElementById('dockerInstalledStatus2');
 
 // --------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => 
@@ -16,3 +17,10 @@ document.addEventListener('DOMContentLoaded', () =>
 
  });
 
+ window.electron.receive('docker-installed-status2', (message) => 
+ {
+   console.log(`[renderer2.js] docker-installed-status2 message = ${message}`);
+   
+   // Update your UI based on the message
+   dockerInstalledStatus2.innerText = message;
+ });

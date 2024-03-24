@@ -5,10 +5,8 @@ document.addEventListener('DOMContentLoaded', () =>
 {
   const terminal = document.getElementById('terminal');
   const errorTerminal = document.getElementById('errorTerminal');
-  const startContainerBtn = document.getElementById('startContainer');
   const devToolsBtn = document.getElementById('devToolsButton');
   const openProductBtn = document.getElementById('openProductButton');
-  const loadingUi = document.getElementById('loadingIndicator');
   const dockerInstalledStatus = document.getElementById('dockerInstalledStatus');
   const dockerRunningStatus = document.getElementById('dockerRunningStatus');
   const appInstalledStatus = document.getElementById('appInstalledStatus');
@@ -28,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () =>
   function renderer_appendToTerminal(message, isError = false) {
     let messageElement;
 
+    /*
     // if message contains stripText anywhere, remove all occurences (replaces with empty string "")
     if (message.startsWith(stripText))
     {
@@ -35,6 +34,7 @@ document.addEventListener('DOMContentLoaded', () =>
       // replace all occurences of stripText  with "". Do not remove " " from the string
       message = message.replace(new RegExp(stripText, 'g'), " ");
     }
+    */
 
     if (isError) {
 
@@ -73,16 +73,16 @@ document.addEventListener('DOMContentLoaded', () =>
     dockerInstalledStatus.innerText = message;
   });
 
-    // Listen for Docker status updates from the main process
-    window.electronAPI.receive('docker-running-status', (message) => 
-    {
-      console.log(`[renderer.js] docker-running-status message = ${message}`);
-      
-      // Update your UI based on the message
-      dockerRunningStatus.innerText = message;
-    });
-  
-  
+  // Listen for Docker status updates from the main process
+  window.electronAPI.receive('docker-running-status', (message) => 
+  {
+    console.log(`[renderer.js] docker-running-status message = ${message}`);
+    
+    // Update your UI based on the message
+    dockerRunningStatus.innerText = message;
+  });
+
+
 
   // Listen for Container status updates from the main process
   window.electronAPI.receive('app-installed-status', (message) => 
