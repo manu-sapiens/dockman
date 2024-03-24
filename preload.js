@@ -31,6 +31,8 @@ const APP_NAME = "Omnitool";
 //const dockerComposeYaml = fs.readFileSync('./docker-compose.yml', 'utf8');
 //const dockerComposeConfig = yaml.load(dockerComposeYaml);
 
+let proceed_with_main_loop = false;
+
 function updateAllStatus(status)
 {
     updateDockerInstalledStatus(status);
@@ -80,8 +82,9 @@ async function async_checkDockerInstalled()
         });
     });
 }
-
-async function async_waitForDockerToBeInstalled(intervalTime = 10000, timeout = 3600000) {
+/*
+async function async_waitForDockerToBeInstalled(intervalTime = 10000, timeout = 3600000) 
+{
     console.log("Waiting for Docker to be installed...");
     
     let totalTime = 0;
@@ -117,6 +120,7 @@ async function async_waitForDockerToBeInstalled(intervalTime = 10000, timeout = 
     
     return false;
 }
+*/
 
 async function async_checkDockerRunning() {
     console.log("Checking if Docker is running...");
@@ -135,12 +139,15 @@ async function async_checkDockerRunning() {
             else if (error) 
             {
                 updateDockerRunningStatus(icon_error);
-                reject(new Error(error.message));
+                console.error(`exec error: ${error}`);
+                //reject(new Error(error.message));
+                resolve(false);
             } 
             else 
             {
                 updateDockerRunningStatus(icon_yes);
                 console.log('Docker is running');
+                ipcRenderer.send('focus-manager-window');
                 resolve(true);
             }
         });
@@ -397,23 +404,51 @@ async function async_composeContainer(command)
 
 contextBridge.exposeInMainWorld('electronAPI', {
 
-    openExternal: (url) => shell.openExternal(url),
+    openExternal: (url) => 
+    {
+        shell.openExternal(url)
+    },
 
     // Function for the renderer to send messages to the main process
-    send: (channel, data) => {
+    send: (channel, data) => 
+    {
         // Channels the renderer process can send messages to
-        let validSendChannels = ['startDockerInstall', 'docker-installed-status', 'docker-running-status','app-installed-status','app-running-status'];
-        if (validSendChannels.includes(channel)) {
+        let validSendChannels = 
+        [
+            'startDockerInstall', 
+            'docker-installed-status', 
+            'set-download-div-visibility',
+            'docker-running-status',
+            'app-installed-status',
+            'app-running-status',
+        ];
+        
+        if (validSendChannels.includes(channel)) 
+        {
             ipcRenderer.send(channel, data);
         }
     },
 
     // Function to receive messages from the main process
-    receive: (channel, func) => {
+    receive: (channel, func) => 
+    {
         console.log("RECEIVE, channel =", channel);
-        let validReceiveChannels = ['docker-installed-status', 'docker-running-status','app-installed-status', 'app-running-status', 'docker-output', 'docker-output-error', 'container-exited'];
-        if (validReceiveChannels.includes(channel)) {
+        let validReceiveChannels = 
+        [
+            'docker-installed-status', 
+            'set-download-div-visibility', 
+            'docker-running-status',
+            'app-installed-status', 
+            'app-running-status', 
+            'docker-output', 
+            'docker-output-error', 
+            'container-exited',
+        ];
+
+        if (validReceiveChannels.includes(channel)) 
+        {
             // Deliberately strip event as it includes `sender` and is a security risk
+            console.log("valid channel =", channel);
             ipcRenderer.on(channel, (event, ...args) => func(...args));
         }
         else
@@ -422,8 +457,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
         }
     },
 
-    electron_openProductWindow: (url) => {
+    electron_openProductWindow: (url) => 
+    {
         ipcRenderer.send('open-product-window', url);
+    },
+
+    electron_checkDockerInstallation: () => 
+    {
+        // SHOULD DO SOMEHTING HERE VISUAL (refresh window, for example)
+        // SO THAT CLICKING DOES SOMETHING
+        proceed_with_main_loop = true;
     },
 
     electron_toggleDevTools: () => {
@@ -440,18 +483,25 @@ console.log("POST INIT -----------------------------");
 
 async function async_installDocker()
 {
-    console.log("PRE async_installDocker -----------------------------");
-    ipcRenderer.send('open-download-window');
-    const docker_is_installed = await async_waitForDockerToBeInstalled();
-    console.log("POST async_installDocker -----------------------------");
-
-    if (!docker_is_installed) 
+    console.log("PRE show -----------------------------");
+    
+    
+    ipcRenderer.send('docker-installed-status', icon_checking);
+    ipcRenderer.send('set-download-div-visibility', 'block');
+    console.log("POST show -----------------------------");
+    while (true)
     {
-        console.warn("Docker is not installed yet...");
-        return false;
-    }    
-    console.warn("Docker is NOW installed!");
-    return true;
+        console.log("tick...");
+
+        if (proceed_with_main_loop)
+        {
+            proceed_with_main_loop = false
+            return;
+        }
+        
+        // wait 5s        
+        await new Promise(resolve => setTimeout(resolve, 5000));
+    }
 }
 
 async function async_main() 
@@ -461,7 +511,7 @@ async function async_main()
     if (!docker_is_installed) 
     {
         console.warn("Docker is not installed");
-        updateDockerInstalledStatus(icon_wait);
+        updateDockerInstalledStatus(icon_no);
         await async_installDocker();
         return false;
     }
@@ -482,6 +532,7 @@ async function async_main()
         return false;
     }
         
+    ipcRenderer.send('focus-manager-window');
     const inital_ping_successful = await async_ping(healthCheckUrl);
     if (inital_ping_successful)
     {

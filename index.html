@@ -49,19 +49,40 @@
 </head>
 <body>
     <h1>Docker Manager</h1>
-    <button id="openProductButton">Open Application Window</button>
-    <button id="devToolsButton">Toggle Dev Tools</button>
-    <div>-------------------</div>
-    <div id="dockerInstalledStatus">?</div>
-    <div id="dockerRunningStatus">?</div>
-    <div id="appInstalledStatus">?</div>
-    <div id="appRunningStatus">?</div>
-    <div>-------------------</div>
-    <div>Console</div>
-    <div id="terminal"></div>
-    <div></div>
-    <div>Errors</div>
-    <div id="errorTerminal"></div>
+    <div id="statusSection">
+        <button id="openProductButton">Open Application Window</button>
+        <button id="devToolsButton">Toggle Dev Tools</button>
+        <div>-------------------</div>
+        <div id="dockerInstalledStatus">? Docker Installed</div>
+        <div id="dockerRunningStatus">? Docker Running</div>
+        <div id="appInstalledStatus">? App Installed</div>
+        <div id="appRunningStatus">? App Running</div>
+        <div>-------------------</div>
+        <div>Console</div>
+        <div id="terminal"></div>
+        <div></div>
+        <div>Errors</div>
+        <div id="errorTerminal"></div>
+    </div>    
+    <div id="dockerDownloadSection"
+        style="display: none;">
+        <div class="info">
+            <p>Docker Desktop is not installed on your system.</p> 
+            <p>To continue, please download and install Docker Desktop.</p>
+            <p>For your convenience, we have provided a button 
+            to open the Docker website at the download page in your default browser.</p>
+            <p>Once the installation is complete, please click the 
+            "Check Again!" button to verify the installation.</p>
+
+            <p>Note that on MacOs, checking the installation while it is still
+            ongoing may corrupt the installation. Please wait for the installation
+            to complete before checking again.</p>
+
+
+        </div>    
+        <button id="downloadDocker">Download Docker</button>
+        <button id="checkDockerInstallation">Check Again!</button>
+    </div>
     <script src="renderer.js"></script>
 </body>
 </html>

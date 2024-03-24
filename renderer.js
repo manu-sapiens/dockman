@@ -1,4 +1,5 @@
 const productWindowUrl = 'http://127.0.0.1:1688';
+const urlToDownloadDockerDesktop = "https://www.docker.com/products/docker-desktop/";
 
 // --------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => 
@@ -11,6 +12,11 @@ document.addEventListener('DOMContentLoaded', () =>
   const dockerRunningStatus = document.getElementById('dockerRunningStatus');
   const appInstalledStatus = document.getElementById('appInstalledStatus');
   const appRunningStatus = document.getElementById('appRunningStatus');
+  const dockerDownloadDiv = document.getElementById('dockerDownloadSection');
+  const statusDiv = document.getElementById('statusSection');
+  const checkDockerInstallationBtn = document.getElementById('checkDockerInstallation');
+  const downloadDockerBtn = document.getElementById('downloadDocker');
+
   const stripText = "omnitool-1  | ";
  
   // --------------------------------------------------
@@ -64,6 +70,16 @@ document.addEventListener('DOMContentLoaded', () =>
     terminal.scrollTop = terminal.scrollHeight; // Auto-scroll to the bottom
   }
 
+  window.electronAPI.receive('set-download-div-visibility', (message) =>
+  {
+
+    console.log(`[renderer.js] set-download-div-visibility message = ${message}`);
+    dockerDownloadDiv.style.display = message;
+    statusDiv.style.display = message === 'none' ? 'block' : 'none';
+    // use message = 'none' to hide, 
+    // to reveral, use message = 'block'
+  });
+
   // Listen for Docker status updates from the main process
   window.electronAPI.receive('docker-installed-status', (message) => 
   {
@@ -102,12 +118,23 @@ document.addEventListener('DOMContentLoaded', () =>
     appRunningStatus.innerText = message;
   });
 
-
+  downloadDockerBtn.addEventListener('click', () => 
+  {
+      window.electronAPI.openExternal(urlToDownloadDockerDesktop);
+  });
 
   // --------------------------------------------------
   openProductBtn.addEventListener('click', () => 
   {
     window.electronAPI.electron_openProductWindow(productWindowUrl);
+  });
+
+
+  checkDockerInstallationBtn.addEventListener('click', () =>
+  {
+    dockerDownloadDiv.style.display = 'none';
+    statusDiv.style.display = 'block';
+    window.electronAPI.electron_checkDockerInstallation();
   });
 
   /*
